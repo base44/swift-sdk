@@ -60,7 +60,7 @@ public struct EntityHandler: Sendable {
     ) async throws -> JSONArray {
         let items = queryItems(sort: sort, limit: limit, skip: skip, fields: fields)
         let data = try await http.get(path: basePath, queryItems: items.isEmpty ? nil : items)
-        return try decode(JSONArray.self, from: data)
+        return try decodeJSONArray(from: data)
     }
 
     // MARK: - Filter
@@ -85,7 +85,7 @@ public struct EntityHandler: Sendable {
         var items = queryItems(sort: sort, limit: limit, skip: skip, fields: fields)
         items.append(URLQueryItem(name: "q", value: queryStr))
         let data = try await http.get(path: basePath, queryItems: items)
-        return try decode(JSONArray.self, from: data)
+        return try decodeJSONArray(from: data)
     }
 
     // MARK: - Get
@@ -93,7 +93,7 @@ public struct EntityHandler: Sendable {
     /// Gets a single entity by ID.
     public func get(id: String) async throws -> JSONObject {
         let data = try await http.get(path: "\(basePath)/\(id)")
-        return try decode(JSONObject.self, from: data)
+        return try decodeJSONObject(from: data)
     }
 
     // MARK: - Create
@@ -103,7 +103,7 @@ public struct EntityHandler: Sendable {
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         let encoded = RawJSONEncodable(data: bodyData)
         let data = try await http.post(path: basePath, body: encoded)
-        return try decode(JSONObject.self, from: data)
+        return try decodeJSONObject(from: data)
     }
 
     // MARK: - Update
@@ -113,7 +113,7 @@ public struct EntityHandler: Sendable {
         let bodyData = try JSONSerialization.data(withJSONObject: body)
         let encoded = RawJSONEncodable(data: bodyData)
         let data = try await http.put(path: "\(basePath)/\(id)", body: encoded)
-        return try decode(JSONObject.self, from: data)
+        return try decodeJSONObject(from: data)
     }
 
     // MARK: - Delete
@@ -141,7 +141,7 @@ public struct EntityHandler: Sendable {
         let bodyData = try JSONSerialization.data(withJSONObject: bodies)
         let encoded = RawJSONEncodable(data: bodyData)
         let data = try await http.post(path: "\(basePath)/bulk", body: encoded)
-        return try decode(JSONArray.self, from: data)
+        return try decodeJSONArray(from: data)
     }
 
     // MARK: - Import
@@ -167,12 +167,21 @@ public struct EntityHandler: Sendable {
     }
 
     private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
-        do {
-            return try JSONDecoder().decode(type, from: data)
-        } catch {
-            if let obj = try? JSONSerialization.jsonObject(with: data) as? T { return obj }
-            throw error
+        return try JSONDecoder().decode(type, from: data)
+    }
+
+    private func decodeJSONObject(from data: Data) throws -> JSONObject {
+        guard let obj = try JSONSerialization.jsonObject(with: data) as? JSONObject else {
+            throw Base44Error(status: 0, message: "Expected JSON object in response")
         }
+        return obj
+    }
+
+    private func decodeJSONArray(from data: Data) throws -> JSONArray {
+        guard let arr = try JSONSerialization.jsonObject(with: data) as? JSONArray else {
+            throw Base44Error(status: 0, message: "Expected JSON array in response")
+        }
+        return arr
     }
 }
 
@@ -183,23 +192,8 @@ struct RawJSONEncodable: Encodable {
     let data: Data
 
     func encode(to encoder: Encoder) throws {
-        guard let obj = try? JSONSerialization.jsonObject(with: data) else { return }
-        if let arr = obj as? [Any] {
-            var container = encoder.unkeyedContainer()
-            for item in arr {
-                let itemData = try JSONSerialization.data(withJSONObject: item)
-                let nestedObj = try JSONDecoder().decode(JSONValue.self, from: itemData)
-                try container.encode(nestedObj)
-            }
-        } else if let dict = obj as? [String: Any] {
-            var container = encoder.container(keyedBy: DynamicCodingKey.self)
-            for (k, v) in dict {
-                let vData = try JSONSerialization.data(withJSONObject: v)
-                let jv = try JSONDecoder().decode(JSONValue.self, from: vData)
-                if let key = DynamicCodingKey(stringValue: k) {
-                    try container.encode(jv, forKey: key)
-                }
-            }
-        }
+        // Decode the raw JSON data into a JSONValue for re-encoding via Codable
+        let jv = try JSONDecoder().decode(JSONValue.self, from: data)
+        try jv.encode(to: encoder)
     }
 }

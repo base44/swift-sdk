@@ -13,7 +13,13 @@ public final class HTTPClient: @unchecked Sendable {
     private var defaultHeaders: [String: String]
     private let lock = NSLock()
 
-    public init(baseURL: String, headers: [String: String] = [:], token: String? = nil) {
+    /// Creates an HTTP client.
+    /// - Parameters:
+    ///   - baseURL: Base URL for all requests.
+    ///   - headers: Default headers merged into every request.
+    ///   - token: Optional bearer token.
+    ///   - session: URLSession to use (defaults to `.shared`; inject for testing).
+    public init(baseURL: String, headers: [String: String] = [:], token: String? = nil, session: URLSession = .shared) {
         self.baseURL = baseURL
         var h = headers
         h["Content-Type"] = "application/json"
@@ -22,7 +28,7 @@ public final class HTTPClient: @unchecked Sendable {
             h["Authorization"] = "Bearer \(token)"
         }
         self.defaultHeaders = h
-        self.session = URLSession.shared
+        self.session = session
     }
 
     // MARK: Token management

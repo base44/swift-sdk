@@ -1,9 +1,12 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 // MARK: - Client Configuration
 
 /// Configuration for creating a Base44 client.
-public struct CreateClientConfig: Sendable {
+public struct CreateClientConfig: @unchecked Sendable {
     /// Base44 server URL. Defaults to `https://base44.app`.
     public let serverUrl: String
     /// Your Base44 application ID.
@@ -18,6 +21,8 @@ public struct CreateClientConfig: Sendable {
     public let functionsVersion: String?
     /// Additional HTTP headers.
     public let headers: [String: String]
+    /// URLSession to use for all requests. Defaults to `.shared`. Inject a custom session for testing.
+    public let urlSession: URLSession
 
     public init(
         appId: String,
@@ -26,7 +31,8 @@ public struct CreateClientConfig: Sendable {
         serviceToken: String? = nil,
         appBaseUrl: String? = nil,
         functionsVersion: String? = nil,
-        headers: [String: String] = [:]
+        headers: [String: String] = [:],
+        urlSession: URLSession = .shared
     ) {
         self.appId = appId
         self.serverUrl = serverUrl
@@ -35,6 +41,7 @@ public struct CreateClientConfig: Sendable {
         self.appBaseUrl = appBaseUrl
         self.functionsVersion = functionsVersion
         self.headers = headers
+        self.urlSession = urlSession
     }
 }
 
@@ -201,14 +208,14 @@ public func createClient(config: CreateClientConfig) -> Base44Client {
         functionHeaders["Base44-Functions-Version"] = v
     }
 
-    let http = HTTPClient(baseURL: baseURL, headers: headers, token: config.token)
-    let functionsHTTP = HTTPClient(baseURL: baseURL, headers: functionHeaders, token: config.token)
+    let http = HTTPClient(baseURL: baseURL, headers: headers, token: config.token, session: config.urlSession)
+    let functionsHTTP = HTTPClient(baseURL: baseURL, headers: functionHeaders, token: config.token, session: config.urlSession)
 
     var serviceHTTP: HTTPClient?
     var serviceFunctionsHTTP: HTTPClient?
     if let st = config.serviceToken {
-        serviceHTTP = HTTPClient(baseURL: baseURL, headers: headers, token: st)
-        serviceFunctionsHTTP = HTTPClient(baseURL: baseURL, headers: functionHeaders, token: st)
+        serviceHTTP = HTTPClient(baseURL: baseURL, headers: headers, token: st, session: config.urlSession)
+        serviceFunctionsHTTP = HTTPClient(baseURL: baseURL, headers: functionHeaders, token: st, session: config.urlSession)
     }
 
     return Base44Client(

@@ -139,6 +139,8 @@ public struct AgentConversation: Codable, Sendable {
     public let id: String
     public let messages: [AgentMessage]?
     public let agent_name: String?
+    public let title: String?
+    public let status: String?
     public let created_at: String?
     public let updated_at: String?
 }
