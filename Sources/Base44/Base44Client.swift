@@ -201,7 +201,6 @@ public struct ServiceRoleClient: Sendable {
 public func createClient(config: CreateClientConfig) -> Base44Client {
     let baseURL = "\(config.serverUrl)/api"
     var headers = config.headers
-    headers["X-App-Id"] = config.appId
 
     var functionHeaders = headers
     if let v = config.functionsVersion {
