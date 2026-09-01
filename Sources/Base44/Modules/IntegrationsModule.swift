@@ -13,7 +13,7 @@ import Foundation
 /// let uploaded = try await base44.integrations.core.uploadFile(data: imageData, filename: "photo.png", mimeType: "image/png")
 ///
 /// // Send email
-/// try await base44.integrations.core.sendEmail(to: "user@example.com", subject: "Hi", body: "Hello!")
+/// try await base44.integrations.core.sendEmail(to: "user@example.com", subject: "Hi", html: "<p>Hello!</p>", text: "Hello!")
 ///
 /// // Dynamic invocation
 /// let response = try await base44.integrations.invoke(package: "Core", endpoint: "InvokeLLM", data: ["prompt": "Hi"])
@@ -148,8 +148,36 @@ public struct CoreIntegrations: Sendable {
     // MARK: - Email
 
     /// Sends an email.
-    public func sendEmail(to: String, subject: String, body: String, from: String? = nil) async throws -> JSONObject {
-        var payload: JSONObject = ["to": to, "subject": subject, "body": body]
+    ///
+    /// At least one of `body`, `html`, or `text` is required; the backend returns 422 otherwise.
+    ///
+    /// | Fields set | Result |
+    /// |---|---|
+    /// | `body` or `html` alone | `text/html` email |
+    /// | `text` alone | `text/plain` email |
+    /// | `body`/`html` + `text` | `multipart/alternative` — one email, two representations; recipient sees whichever their client prefers — both parts must say the same thing |
+    /// | `body` + `html` | **422** — same slot, set one not both |
+    ///
+    /// - Parameters:
+    ///   - to: Recipient email address.
+    ///   - subject: Email subject line.
+    ///   - body: HTML email body content. Alias of `html` — set one or the other, never both.
+    ///   - html: HTML email body content. The same thing as `body` under an explicit name.
+    ///   - text: Plain-text email body content. On its own sends a `text/plain` email; alongside
+    ///     `body`/`html` produces a `multipart/alternative` email — both parts must say the same thing.
+    ///   - from: The name of the sender. If omitted, the app's name will be used.
+    public func sendEmail(
+        to: String,
+        subject: String,
+        body: String? = nil,
+        html: String? = nil,
+        text: String? = nil,
+        from: String? = nil
+    ) async throws -> JSONObject {
+        var payload: JSONObject = ["to": to, "subject": subject]
+        if let b = body { payload["body"] = b }
+        if let h = html { payload["html"] = h }
+        if let t = text { payload["text"] = t }
         if let f = from { payload["from"] = f }
         let bodyData = try JSONSerialization.data(withJSONObject: payload)
         let data = try await http.post(path: corePath("SendEmail"), body: RawJSONEncodable(data: bodyData))
