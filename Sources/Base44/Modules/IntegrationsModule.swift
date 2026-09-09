@@ -74,6 +74,32 @@ public struct IntegrationsModule: Sendable {
     }
 }
 
+// MARK: - Email Attachment
+
+/// A file to attach to a `sendEmail` call.
+///
+/// Provide exactly one content source per attachment:
+/// - `.inline(filename:content:)` — base64-encoded bytes generated at runtime.
+/// - `.stored(filename:fileURL:)` — a URL returned by `uploadFile` or `uploadPrivateFile`.
+///
+/// Allowed extensions: pdf, png, jpg/jpeg, gif, webp, csv, txt, md, ics, xlsx, docx.
+/// Limits: up to 5 attachments, 5 MB each, 10 MB total.
+public enum EmailAttachment: Sendable {
+    /// Inline base64-encoded content (e.g. a PDF generated in the function).
+    case inline(filename: String, content: String)
+    /// A file already in storage, referenced by its upload URL.
+    case stored(filename: String, fileURL: String)
+
+    var jsonObject: JSONObject {
+        switch self {
+        case let .inline(filename, content):
+            return ["filename": filename, "content": content]
+        case let .stored(filename, fileURL):
+            return ["filename": filename, "file_url": fileURL]
+        }
+    }
+}
+
 // MARK: - Core Integrations
 
 /// Convenient typed wrappers for Base44 Core integration endpoints.
@@ -166,19 +192,24 @@ public struct CoreIntegrations: Sendable {
     ///   - text: Plain-text email body content. On its own sends a `text/plain` email; alongside
     ///     `body`/`html` produces a `multipart/alternative` email — both parts must say the same thing.
     ///   - from: The name of the sender. If omitted, the app's name will be used.
+    ///   - attachments: Up to 5 files to attach (5 MB each, 10 MB total).
+    ///     Use `.inline(filename:content:)` for base64-encoded bytes or
+    ///     `.stored(filename:fileURL:)` for a storage URL.
     public func sendEmail(
         to: String,
         subject: String,
         body: String? = nil,
         html: String? = nil,
         text: String? = nil,
-        from: String? = nil
+        from: String? = nil,
+        attachments: [EmailAttachment]? = nil
     ) async throws -> JSONObject {
         var payload: JSONObject = ["to": to, "subject": subject]
         if let b = body { payload["body"] = b }
         if let h = html { payload["html"] = h }
         if let t = text { payload["text"] = t }
         if let f = from { payload["from"] = f }
+        if let list = attachments { payload["attachments"] = list.map { $0.jsonObject } }
         let bodyData = try JSONSerialization.data(withJSONObject: payload)
         let data = try await http.post(path: corePath("SendEmail"), body: RawJSONEncodable(data: bodyData))
         return (try? JSONSerialization.jsonObject(with: data) as? JSONObject) ?? [:]
