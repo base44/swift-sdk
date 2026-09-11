@@ -170,6 +170,49 @@ final class IntegrationsTests: XCTestCase {
         }
     }
 
+    func testSendEmailWithHtmlAndText() async throws {
+        MockURLProtocol.mockJSONObject(
+            path: "/api/apps/\(appId)/integration-endpoints/Core/SendEmail",
+            object: ["sent": true]
+        )
+
+        let client = makeClient()
+        _ = try await client.integrations.core.sendEmail(
+            to: "user@example.com",
+            subject: "Multipart",
+            html: "<p>Hello</p>",
+            text: "Hello"
+        )
+
+        if let bodyData = MockURLProtocol.lastRequest?.httpBody {
+            let body = try JSONSerialization.jsonObject(with: bodyData) as? [String: Any]
+            XCTAssertEqual(body?["html"] as? String, "<p>Hello</p>")
+            XCTAssertEqual(body?["text"] as? String, "Hello")
+            XCTAssertNil(body?["body"], "body should not be sent when html is used")
+        }
+    }
+
+    func testSendEmailTextOnly() async throws {
+        MockURLProtocol.mockJSONObject(
+            path: "/api/apps/\(appId)/integration-endpoints/Core/SendEmail",
+            object: ["sent": true]
+        )
+
+        let client = makeClient()
+        _ = try await client.integrations.core.sendEmail(
+            to: "user@example.com",
+            subject: "Plain text",
+            text: "Hello plain"
+        )
+
+        if let bodyData = MockURLProtocol.lastRequest?.httpBody {
+            let body = try JSONSerialization.jsonObject(with: bodyData) as? [String: Any]
+            XCTAssertEqual(body?["text"] as? String, "Hello plain")
+            XCTAssertNil(body?["html"])
+            XCTAssertNil(body?["body"])
+        }
+    }
+
     // MARK: - extractDataFromUploadedFile
 
     func testExtractDataFromUploadedFile() async throws {
