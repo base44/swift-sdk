@@ -159,15 +159,61 @@ final class IntegrationsTests: XCTestCase {
         _ = try await client.integrations.core.sendEmail(
             to: "user@example.com",
             subject: "Test Subject",
-            body: "Test body text"
+            body: "Test body text",
+            from: "My App"
         )
 
-        if let bodyData = MockURLProtocol.lastRequest?.httpBody {
-            let body = try JSONSerialization.jsonObject(with: bodyData) as? [String: Any]
-            XCTAssertEqual(body?["to"] as? String, "user@example.com")
-            XCTAssertEqual(body?["subject"] as? String, "Test Subject")
-            XCTAssertEqual(body?["body"] as? String, "Test body text")
-        }
+        let body = try XCTUnwrap(MockURLProtocol.lastRequestJSON)
+        XCTAssertEqual(body["to"] as? String, "user@example.com")
+        XCTAssertEqual(body["subject"] as? String, "Test Subject")
+        XCTAssertEqual(body["body"] as? String, "Test body text")
+        XCTAssertEqual(body["from_name"] as? String, "My App")
+        XCTAssertNil(body["from"])
+    }
+
+    func testSendEmailWithHtmlAndText() async throws {
+        MockURLProtocol.mockJSONObject(
+            path: "/api/apps/\(appId)/integration-endpoints/Core/SendEmail",
+            object: ["sent": true]
+        )
+
+        let client = makeClient()
+        _ = try await client.integrations.core.sendEmail(
+            to: "user@example.com",
+            subject: "Multipart",
+            html: "<p>Hello</p>",
+            text: "Hello"
+        )
+
+        let body = try XCTUnwrap(MockURLProtocol.lastRequestJSON)
+        XCTAssertEqual(body["html"] as? String, "<p>Hello</p>")
+        XCTAssertEqual(body["text"] as? String, "Hello")
+        XCTAssertNil(body["body"])
+    }
+
+    func testSendEmailAttachments() async throws {
+        MockURLProtocol.mockJSONObject(
+            path: "/api/apps/\(appId)/integration-endpoints/Core/SendEmail",
+            object: ["sent": true]
+        )
+
+        let client = makeClient()
+        _ = try await client.integrations.core.sendEmail(
+            to: "user@example.com",
+            subject: "Invoice",
+            html: "<p>See attached.</p>",
+            attachments: [
+                .stored(filename: "logo.png", fileURL: "https://example.com/logo.png"),
+                .inline(filename: "invoice.pdf", content: "JVBERi0x"),
+            ]
+        )
+
+        let body = try XCTUnwrap(MockURLProtocol.lastRequestJSON)
+        let attachments = try XCTUnwrap(body["attachments"] as? [[String: String]])
+        XCTAssertEqual(attachments, [
+            ["filename": "logo.png", "file_url": "https://example.com/logo.png"],
+            ["filename": "invoice.pdf", "content": "JVBERi0x"],
+        ])
     }
 
     // MARK: - extractDataFromUploadedFile
