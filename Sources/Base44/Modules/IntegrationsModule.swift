@@ -13,7 +13,7 @@ import Foundation
 /// let uploaded = try await base44.integrations.core.uploadFile(data: imageData, filename: "photo.png", mimeType: "image/png")
 ///
 /// // Send email
-/// try await base44.integrations.core.sendEmail(to: "user@example.com", subject: "Hi", body: "Hello!")
+/// try await base44.integrations.core.sendEmail(to: "user@example.com", subject: "Hi", html: "<p>Hello!</p>", text: "Hello!")
 ///
 /// // Dynamic invocation
 /// let response = try await base44.integrations.invoke(package: "Core", endpoint: "InvokeLLM", data: ["prompt": "Hi"])
@@ -71,6 +71,29 @@ public struct IntegrationsModule: Sendable {
         let multipart = MultipartBody(fields: multipartFields)
         let responseData = try await http.post(path: path, multipart: multipart)
         return (try? JSONSerialization.jsonObject(with: responseData) as? JSONObject) ?? [:]
+    }
+}
+
+// MARK: - Email Attachment
+
+/// A file to attach to an email sent with `sendEmail`.
+///
+/// `filename` is the name the recipient sees, including the extension. Supported extensions:
+/// csv, docx, gif, ics, jpeg, jpg, md, pdf, png, txt, webp, and xlsx.
+public enum EmailAttachment: Sendable {
+    /// Base64-encoded contents of a file your code generated.
+    case inline(filename: String, content: String)
+    /// A file your app already uploaded, such as the `file_url` returned by `uploadFile`
+    /// or the `file_uri` returned by `uploadPrivateFile`.
+    case stored(filename: String, fileURL: String)
+
+    var jsonObject: JSONObject {
+        switch self {
+        case let .inline(filename, content):
+            return ["filename": filename, "content": content]
+        case let .stored(filename, fileURL):
+            return ["filename": filename, "file_url": fileURL]
+        }
     }
 }
 
@@ -147,10 +170,32 @@ public struct CoreIntegrations: Sendable {
 
     // MARK: - Email
 
-    /// Sends an email.
-    public func sendEmail(to: String, subject: String, body: String, from: String? = nil) async throws -> JSONObject {
-        var payload: JSONObject = ["to": to, "subject": subject, "body": body]
-        if let f = from { payload["from"] = f }
+    /// Sends an email. Set at least one of `body`, `html`, or `text`.
+    ///
+    /// - Parameters:
+    ///   - to: Recipient email address.
+    ///   - subject: Email subject line.
+    ///   - body: HTML email body. The same as `html`, so set one or the other, not both.
+    ///   - html: HTML email body. The same as `body`, so set one or the other, not both.
+    ///   - text: Plain-text email body. On its own, it sends a plain-text email. Set it together with
+    ///     `body` or `html` to send both versions in one email. Make sure both versions say the same thing.
+    ///   - from: The name of the sender. If omitted, the app's name is used.
+    ///   - attachments: Files to attach: up to 5 files, up to 5 MB each and 10 MB in total.
+    public func sendEmail(
+        to: String,
+        subject: String,
+        body: String? = nil,
+        html: String? = nil,
+        text: String? = nil,
+        from: String? = nil,
+        attachments: [EmailAttachment]? = nil
+    ) async throws -> JSONObject {
+        var payload: JSONObject = ["to": to, "subject": subject]
+        if let b = body { payload["body"] = b }
+        if let h = html { payload["html"] = h }
+        if let t = text { payload["text"] = t }
+        if let f = from { payload["from_name"] = f }
+        if let list = attachments { payload["attachments"] = list.map { $0.jsonObject } }
         let bodyData = try JSONSerialization.data(withJSONObject: payload)
         let data = try await http.post(path: corePath("SendEmail"), body: RawJSONEncodable(data: bodyData))
         return (try? JSONSerialization.jsonObject(with: data) as? JSONObject) ?? [:]

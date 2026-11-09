@@ -21,6 +21,8 @@ final class MockURLProtocol: URLProtocol {
 
     static var handlers: [String: Handler] = [:]
     static var requestLog: [URLRequest] = []
+    // URLSession hands a protocol the body as httpBodyStream, so a logged request's httpBody is nil.
+    static var bodyLog: [Data] = []
     private static let lock = NSLock()
 
     static func reset() {
@@ -28,6 +30,7 @@ final class MockURLProtocol: URLProtocol {
         defer { lock.unlock() }
         handlers.removeAll()
         requestLog.removeAll()
+        bodyLog.removeAll()
     }
 
     /// Register a handler for a specific URL path.
@@ -107,12 +110,35 @@ final class MockURLProtocol: URLProtocol {
         return requestLog.last
     }
 
+    /// Returns the most recent request's body decoded as a JSON object.
+    static var lastRequestJSON: [String: Any]? {
+        lock.lock()
+        defer { lock.unlock() }
+        return bodyLog.last.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+    }
+
+    private static func readBody(of request: URLRequest) -> Data {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return Data() }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count <= 0 { break }
+            data.append(buffer, count: count)
+        }
+        return data
+    }
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         MockURLProtocol.lock.lock()
         MockURLProtocol.requestLog.append(request)
+        MockURLProtocol.bodyLog.append(MockURLProtocol.readBody(of: request))
         let path = request.url?.path ?? ""
         // Try exact match first, then prefix match
         let handler = MockURLProtocol.handlers[path]
